@@ -1,12 +1,22 @@
-CREATE TABLE biodata (
-    id SERIAL PRIMARY KEY,
-    fname TEXT,
-    lname TEXT,
-    address TEXT,
-    dob DATE,
-    phone TEXT,
-    email TEXT,
-    gender TEXT,
-    photo BYTEA,
-    hobbies TEXT
-);
+/* external css */
+body {
+    background-color: lightblue;
+  }
+ 
+
+/* animation */
+  body{
+    animation-duration: 5s;
+    animation-name: myAnimation;
+  }
+  
+  
+  @keyframes myAnimation {
+    0% {
+      background-color: lightblue;
+    }
+    100% {
+      background-color: linen;
+    }
+  }
+ 
