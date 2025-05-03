@@ -1,90 +1,105 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biodata</title>
-    <link rel="stylesheet" href="style.css"> </link>
-</head>
+from http.server import BaseHTTPRequestHandler,HTTPServer
+import cgi
+import os
+import psycopg2
+import base64
+import re
 
-<body>
-    <!-- inline css -->
-    <h1 style="color:#a80fe4; 
-    font-size:50px; 
-    font-style:bold; 
-    text-align:center;">Biodata</h1>
+HOST = "192.168.6.57"
+PORT = 8000
 
-<!-- internal css  -->
-<style>
-        /* body {
-            background-color: lightpink;
-        } */
-
-        form {
-            max-width: 600px;
-            margin: auto;
-            padding: 20px;
-            border: 2px solid #ccc;
-            background-color: #fff;
-            border-radius: 10px;
-        }
-    </style>
-
-    <form id="biodataform" action="/save_data" method="post" enctype="multipart/form-data" autocomplete="off">
+#get data from html
+class RequestHandler(BaseHTTPRequestHandler):
+    def do_GET(add):
+        if add.path == "/":
+            with open("biodata.html","r") as file:
+                html = file.read()
+            add.send_response(200)
+            add.send_header("Content-type", "text/html")
+            add.end_headers()
+            add.wfile.write(html.encode())
+        elif add.path == "/style.css":
+            try:
+                with open("style.css", "r") as file:
+                  css = file.read()
+                add.send_response(200)
+                add.send_header("Content-type", "text/css")
+                add.end_headers()
+                add.wfile.write(css.encode())
+            except FileNotFoundError:
+                add.send_error(404, "File not found")
+        else:
+            add.send_error(404)
         
-        <label for="fname">First name:</label>
-        <input type="text" id="fname" name="fname" value=""><br><br>
+#save in database
+    def do_POST(add):
+        if add.path == "/save_data":
+            # Parse form data 
+            content_type = add.headers.get('Content-Type')
+        if not content_type.startswith('multipart/form-data'):
+                add.send_error(400, "Expected multipart/form-data")
+                return
 
-        <label for="lname">Last name:</label>
-        <input type="text" id="lname" name="lname" value=""><br><br>
+        form = cgi.FieldStorage(fp=add.rfile,headers=add.headers,environ={'REQUEST_METHOD': 'POST','CONTENT_TYPE': content_type})
 
-        <label for="address">Address:</label>
-        <textarea id="address" name="address"></textarea><br><br>
+        fname = form.getvalue("fname")
+        lname = form.getvalue("lname")
+        address = form.getvalue("address")
+        dob = form.getvalue("date")
+        phone = form.getvalue("phone")
+        phone_pattern = r"^(\+91[\-\s]?)?[0]?[6789]\d{9}$"
+        if not re.match(phone_pattern,phone):
+              add.send_response(400)
+              add.end_headers()
+              add.wfile.write("invalid phone number".encode())
+              
+        email = form.getvalue("email")
+        email_pattern = r"^([a-z0-9][\.\-\_]?)*[@][a-z]{5}[\.](com|in){2,3}$"
+        if not re.match(email_pattern,email):
+             add.send_response(400)
+             add.end_headers()
+             add.wfile.write("invalid email id".encode())
 
-        <label for="date">Date of Birth:</label>
-        <input type="date" id="date" name="date" value=""><br><br>
+        gender = form.getvalue("gender")
+        hobbies_list = form.getlist("hobbies")
+        hobbies = ",".join(hobbies_list)
 
-        <label for="phone">Phone Number:</label>
-        <input type="tel" id="phone" name="phone" value=""><br><br>
+        photo_base64 = None
+        if "photo" in form and form["photo"].filename:
+             photo_data = form["photo"].file.read()
+             photo_base64 = base64.b64encode(photo_data).decode("utf-8")
+        
 
-        <label for="email">Email:</label>
-        <input type="email" id="email" name="email" value=""><br><br>
+        try:
+                conn = psycopg2.connect(
+                    dbname="postgres",
+                    user="postgres",
+                    password="postgres",
+                    host="localhost",
+                    port="5432"
+                )
+                cur = conn.cursor()
+                query = f"""
+                    INSERT INTO biodata (fname, lname, address, dob, phone, email, gender, hobbies, photo)
+                    VALUES ('{fname}', '{lname}', '{address}', '{dob}', '{phone}', '{email}', '{gender}', '{hobbies}', '{photo_base64}')
+                """
+                cur.execute(query)
+                conn.commit()
+                cur.close()
+                conn.close()
 
-        <label for ="gender">Gender:</label>
-        <input type="radio" id ="gender" name="gender" value="male" /> Male
-        <input type="radio" id ="gender" name="gender" value="female" /> Female<br><br>
+                add.send_response(200)
+                add.end_headers()
+                add.wfile.write("Data saved successfully.".encode())
+        except Exception as e:
+                add.send_response(500)
+                add.end_headers()
+                add.wfile.write(f"Error saving data: {str(e)}".encode())
 
-        <label for="photo">Upload photo:</label>
-        <input type="file" id="photo" name="photo" accept="image/*"><br><br>
+def run():
+    server = HTTPServer((HOST, PORT), RequestHandler)
+    print(f"Server running on http://{HOST}:{PORT}")
+    server.serve_forever()
 
-        <label for="hobbies">Hobbies:</label>
-        <input type="checkbox" id ="hobbies" name="hobbies" value="Reading" /> Reading
-        <input type="checkbox" id ="hobbies" name="hobbies" value="Playing" /> Playing
-        <input type="checkbox" id ="hobbies" name="hobbies" value="Travelling" /> Travelling
-        <input type="checkbox" id ="hobbies" name="hobbies" value="Coding" /> Coding
-        <input type="checkbox" id ="hobbies" name="hobbies" value="Dancing" /> Dancing <br><br>
-
-        <input style="color:rgb(162, 0, 255);" type="submit" value="Submit">
-        <input type="reset" value="Reset">
-        <input style="color:red;" type="button" value="Cancel" onclick="window.location.href='/'">
-
-        <h2> &#128077;</h2>   
-    
-    </form>
-
-    <script>
-        const form = document.getElementById("biodataform");
-        form.addEventListener("submit", function (e) {
-            e.preventDefault();
-            const formData = new FormData(form);
-            fetch("/save_data", {
-                method: "POST",
-                body: formData
-            })
-                .then((res) => res.text())
-                .then((data) => alert(data))
-                .catch((err) => alert("Error submitting form: " + err.message));
-        });
-    </script>
-</body>
-</html>
+if __name__ == "__main__":
+    run()
